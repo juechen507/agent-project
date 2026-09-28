@@ -1,3 +1,7 @@
-# 唯一的核心依赖：OpenAI 官方 SDK（也兼容 DeepSeek/Qwen 等 OpenAI 格式端点）
+# 手写版（native 模式）依赖：OpenAI 官方 SDK（也兼容 DeepSeek/Qwen 等 OpenAI 格式端点）
 openai>=1.40.0
 requests>=2.29.0
+
+# LangGraph 版（graph / preset 模式）依赖
+langchain-openai>=0.2.0
+langgraph>=0.2.0

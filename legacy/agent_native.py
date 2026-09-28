@@ -1,5 +1,7 @@
 """
 Agent 核心模块 —— 整个项目最重要的一段代码
+（LangGraph 重构后，本手写版已归档到 legacy/，作为 `native` 模式保留，
+ 用于和 agent_graph.py / agent_preset.py 对比学习）
 
 📚 新手知识点：Agent 循环（ReAct Loop）
 
@@ -26,7 +28,7 @@ Agent 核心模块 —— 整个项目最重要的一段代码
 from openai import OpenAI
 
 from config import get_config
-from tools import TOOL_SCHEMAS, execute_tool
+from legacy.tools_raw import TOOL_SCHEMAS, execute_tool
 
 SYSTEM_PROMPT = """你是一名 AI 学习助教，正在教一位编程新手理解 Agent。
 规则：

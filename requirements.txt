@@ -1,0 +1,2 @@
+# 唯一的核心依赖：OpenAI 官方 SDK（也兼容 DeepSeek/Qwen 等 OpenAI 格式端点）
+openai>=1.40.0

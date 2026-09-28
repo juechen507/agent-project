@@ -19,6 +19,7 @@
 import datetime
 import json
 import random
+import requests
 
 # ------------------------------------------------------------------
 # 一、工具的"实现"：就是普普通通的 Python 函数
@@ -69,12 +70,41 @@ def get_time() -> str:
 
 def get_weather(city: str) -> str:
     """查询指定城市的实时天气。参数 city 为中文城市名，如"北京"、"杭州"。"""
+    """
     data = FAKE_WEATHER.get(city)
     if data is None:
         # 把"查不到"也作为信息返回给模型，让它能礼貌地告知用户
         available = "、".join(FAKE_WEATHER)
         return f"暂无 {city} 的天气数据，目前支持的城市有：{available}"
     return f"{city}：{data['weather']}，气温 {data['temp_c']}°C，{data['wind']}"
+    """
+    url = f"https://wttr.in/${city}?format=j1"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()  # 状态码不是200抛异常
+        data = resp.json()
+
+        # 当前天气在 current_condition 数组第0项
+        current = data["current_condition"][0]
+        weather_info = {
+            "城市": city,
+            "天气描述": current["weatherDesc"][0]["value"],
+            "温度(℃)": current["temp_C"],
+            "体感温度(℃)": current["FeelsLikeC"],
+            "湿度(%)": current["humidity"],
+            "风速(km/h)": current["windspeedKmph"],
+            "降水(mm)": current["precipMM"],
+            "气压": current["pressure"],
+        }
+        return weather_info
+
+    except requests.exceptions.RequestException as e:
+        print(f"网络请求异常: {e}")
+        return None
+    except KeyError as e:
+        print(f"返回数据缺少字段: {e}")
+        return None
 
 
 def calculate(expression: str) -> str:

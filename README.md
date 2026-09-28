@@ -94,12 +94,12 @@ Agent> 计算结果是 1152，现在是周日上午 10:30 ……
 
 1. ⭐ **加一个新工具**：写一个 `get_random_joke()` 讲笑话函数，
    在 `TOOL_SCHEMAS` 注册、加入 `TOOL_REGISTRY`，问 Agent"讲个笑话"验证。
-   （做完你会彻底理解"工具 = 函数 + 说明书"）
+   （做完你会彻底理解"工具 = 函数 + 说明书"） -- done
 2. ⭐ **改人设**：修改 `agent.py` 里的 `SYSTEM_PROMPT`，把它变成一个严格的高数老师，
    观察回答风格的变化。（体会系统提示词的作用）
 3. ⭐⭐ **换模型**：在 `.env` 里设置 `LLM_MODEL`，对比不同模型的工具调用准确率。
 4. ⭐⭐ **真实天气**：把 `tools.py` 的 `FAKE_WEATHER` 换成调用免费接口
-   `https://wttr.in/城市?format=j1`（用 `requests` 库），不加 Key 也能用。
+   `https://wttr.in/城市?format=j1`（用 `requests` 库），不加 Key 也能用。 -- done
 5. ⭐⭐⭐ **升级成 Web 界面**：用 20 行 FastAPI 或 Gradio 替换 `main.py` 的
    while 循环，`Agent` 类一行不用改。（体会分层设计的价值）
 

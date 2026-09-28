@@ -18,6 +18,7 @@
 
 import datetime
 import json
+import random
 
 # ------------------------------------------------------------------
 # 一、工具的"实现"：就是普普通通的 Python 函数
@@ -102,6 +103,16 @@ def lookup_knowledge(topic: str) -> str:
     return f"知识库中没有找到关于「{topic}」的条目。"
 
 
+def get_random_joke() -> str:
+    """讲一个随机的笑话。"""
+    jokes = [
+        "为什么程序员不喜欢在户外工作？因为那里有bug。",
+        "程序员和数学家哪个更喜欢在户外？因为那里有bug。",
+        "π 是无理数，所以它很长很长，没有重复的数字。",
+    ]
+    return random.choice(jokes)
+
+
 # ------------------------------------------------------------------
 # 二、工具的"说明书"：OpenAI 格式的 JSON Schema
 #
@@ -160,6 +171,14 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_random_joke",
+            "description": "讲一个随机的笑话",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 # 工具注册表：函数名字 -> 函数本体。
@@ -169,6 +188,7 @@ TOOL_REGISTRY = {
     "get_weather": get_weather,
     "calculate": calculate,
     "lookup_knowledge": lookup_knowledge,
+    "get_random_joke": get_random_joke,
 }
 
 

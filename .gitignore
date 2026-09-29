@@ -7,6 +7,9 @@ __pycache__/
 .venv/
 venv/
 
+# RAG 向量索引（由 rag.py 自动生成）
+.rag_index.json
+
 # IDE
 .idea/
 .vscode/

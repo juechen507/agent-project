@@ -27,6 +27,8 @@ import random
 import requests
 from langchain_core.tools import tool
 
+from rag import retrieve_knowledge
+
 # ------------------------------------------------------------------
 # 工具的"实现"：普通 Python 函数 + @tool 装饰器
 # ------------------------------------------------------------------
@@ -89,43 +91,11 @@ def calculate(expression: str) -> str:
         return f"计算出错：{exc}"
 
 
-# 迷你知识库：Agent 项目里最常见的 RAG（检索增强生成）的极简形态。
-# 真实 RAG 会用向量相似度检索，这里用关键词匹配演示核心思想：
-# "让模型先查资料，再基于资料回答"，减少胡编乱造。
-KNOWLEDGE_BASE = {
-    "什么是agent": (
-        "Agent（智能体）= 能自主决定'先做什么、再做什么'的程序。"
-        "它以大模型为大脑，通过循环调用工具来完成单轮对话做不到的任务。"
-    ),
-    "什么是react": (
-        "ReAct 是 Reasoning + Acting 的缩写，是 Agent 最经典的运行模式："
-        "模型先思考(Reasoning)，再行动(Acting，即调用工具)，观察结果后再思考，循环往复直到任务完成。"
-    ),
-    "什么是function calling": (
-        "Function Calling（工具调用）是让大模型以 JSON 格式表达'我想调用哪个函数、传什么参数'的机制，"
-        "真正的执行由我们的代码完成，模型本身不运行任何代码。"
-    ),
-    "什么是提示词": (
-        "提示词（Prompt）是发给大模型的输入文本。通常分为系统提示词（设定角色和规则）"
-        "和用户提示词（本次的具体问题）。"
-    ),
-    "什么是token": (
-        "Token 是大模型处理文本的最小单位，约等于一个词或半个汉字。"
-        "API 按 token 计费，模型有最大上下文长度限制（如 128K token）。"
-    ),
-}
-
-
 @tool
 def lookup_knowledge(topic: str) -> str:
-    """在内置知识库中查询 AI/Agent 相关概念的解释。参数 topic 是要查询的关键词，如"Agent"、"ReAct"、"Function Calling"、"提示词"、"token"。"""
-    # 注意匹配方向：知识库的 key（如"什么是react"）比用户传的 topic（如"react"）更长，
-    # 所以要用 "key 包含 topic" 来判断，而不是反过来。这是一个很好的新手 bug 教学案例。
-    topic_normalized = topic.lower().replace("什么是", "").strip()
-    for key, value in KNOWLEDGE_BASE.items():
-        if topic_normalized and (topic_normalized in key or key in topic_normalized):
-            return value
-    return f"知识库中没有找到关于「{topic}」的条目。"
+    """在本地知识库中做 RAG 语义检索。解释 Agent、ReAct、Function Calling、提示词、Token、LangGraph、RAG 等概念时必须使用。参数 topic 请尽量用用户的原话或完整问题，不要只传单个词。"""
+    # 检索实现见 rag.py：切块 → TF-IDF 向量 → 余弦相似度 Top-K。
+    return retrieve_knowledge(topic)
 
 
 @tool

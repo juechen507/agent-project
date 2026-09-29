@@ -5,3 +5,6 @@ requests>=2.29.0
 # LangGraph 版（graph / preset 模式）依赖
 langchain-openai>=0.2.0
 langgraph>=0.2.0
+
+# RAG Chroma 后端依赖（RAG_BACKEND=chroma 时需要；不装则自动回退 local 索引）
+chromadb>=0.5.0

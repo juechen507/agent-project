@@ -10,6 +10,9 @@ venv/
 # RAG 向量索引（由 rag.py 自动生成）
 .rag_index.json
 
+# Chroma 持久化向量库（RAG_BACKEND=chroma 时由 rag.py 自动生成）
+chroma_db/
+
 # IDE
 .idea/
 .vscode/

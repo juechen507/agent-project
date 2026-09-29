@@ -95,6 +95,7 @@ def calculate(expression: str) -> str:
 def lookup_knowledge(topic: str) -> str:
     """在本地知识库中做 RAG 语义检索。解释 Agent、ReAct、Function Calling、提示词、Token、LangGraph、RAG 等概念时必须使用。参数 topic 请尽量用用户的原话或完整问题，不要只传单个词。"""
     # 检索实现见 rag.py：切块 → TF-IDF 向量 → 余弦相似度 Top-K。
+    # 默认走自建 JSON 索引，.env 里设 RAG_BACKEND=chroma 可切到 Chroma 向量库。
     return retrieve_knowledge(topic)
 
 

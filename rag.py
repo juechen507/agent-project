@@ -13,10 +13,17 @@ RAG 模块 —— 检索增强生成里的「检索」一半
   本文件只做检索，生成仍由 Agent 完成：lookup_knowledge 把检索结果
   以纯文本返回，模型读完再组织成回答。三种 Agent 模式共用这一套。
 
-  向量怎么来的？（本项目故意不用 ChromaDB / OpenAI Embedding）
+  向量怎么来的？（本项目有两个后端，共用同一套向量化逻辑）
     对中文用「单字 + 二字词」，对英文用单词，再做 TF-IDF。
-    这样零依赖、可打印、改一行就能看懂「语义相近」到底在算什么。
-    生产环境会换成神经网络 embedding；公式（切块 → 向量 → 相似度）是一样的。
+    这样零 API 依赖、可打印、改一行就能看懂「语义相近」到底在算什么。
+
+  两个后端（用 .env 里的 RAG_BACKEND 切换）：
+    local —— 默认。TF-IDF 稀疏向量 + 自建的 .rag_index.json，
+             检索逻辑全部在本文件里，适合逐行阅读。
+    chroma —— 把同样的 TF-IDF 向量变稠密后写入 Chroma 持久化向量库
+              （chroma_db/ 目录），由 Chroma 负责相似度检索。
+              生产环境可把向量化那一层换成神经网络 embedding，
+              接 Chroma 的方式（切块 → 向量 → 入库 → Top-K 查询）是一样的。
 """
 
 from __future__ import annotations
@@ -24,16 +31,30 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 from pathlib import Path
 
-from config import ROOT_DIR
+from config import ROOT_DIR, load_dotenv
+
+# tools.py / legacy 都会直接 import 本文件，不一定经过 config.get_config()，
+# 所以在这里先把 .env 读进来（setdefault 语义，不会覆盖已有环境变量）。
+load_dotenv()
 
 KNOWLEDGE_DIR = ROOT_DIR / "knowledge"
 INDEX_PATH = ROOT_DIR / ".rag_index.json"
 TOP_K = 3
 # 余弦相似度低于此值视为不相关（TF-IDF 向量较稀疏，阈值不宜过高）
 MIN_SCORE = 0.08
+
+# RAG 后端：local = 自建 TF-IDF JSON 索引；chroma = Chroma 持久化向量库。
+# 选了 chroma 但没装 chromadb 时，自动回退到 local，程序不崩。
+CHROMA_DIR = ROOT_DIR / "chroma_db"
+
+
+def _backend() -> str:
+    """每次调用时读环境变量，方便调试时临时改 RAG_BACKEND。"""
+    return os.getenv("RAG_BACKEND", "local").strip().lower() or "local"
 
 _index: dict | None = None
 
@@ -63,6 +84,13 @@ def retrieve_knowledge(query: str, top_k: int = TOP_K) -> str:
 
 
 def search(query: str, top_k: int = TOP_K) -> list[dict]:
+    """按 RAG_BACKEND 分发到对应后端；两个后端返回的 hit 结构一致。"""
+    if _backend() == "chroma":
+        return _search_chroma(query, top_k=top_k)
+    return _search_local(query, top_k=top_k)
+
+
+def _search_local(query: str, top_k: int = TOP_K) -> list[dict]:
     index = _load_index()
     query_vec = _tfidf_vector(_tokenize(query), index["idf"])
     scored: list[dict] = []
@@ -79,6 +107,81 @@ def search(query: str, top_k: int = TOP_K) -> list[dict]:
         )
     scored.sort(key=lambda h: h["score"], reverse=True)
     return scored[:top_k]
+
+
+def _search_chroma(query: str, top_k: int = TOP_K) -> list[dict]:
+    """Chroma 后端：向量入库/检索都走 Chroma，没装 chromadb 则回退 local。
+
+    📚 对接 Chroma 的四步套路（换神经网络 embedding 也是这四步）：
+      1. 切块：复用 local 后端的 load_chunks / _tokenize / TF-IDF；
+      2. 向量→稠密：稀疏 dict 按词表下标展开成 list，交给 Chroma 存；
+      3. 入库：collection.upsert(ids, vectors, metadatas)，自带文档指纹，知识文件一改就重建；
+      4. 检索：collection.query(query_embeddings=[...], n_results=k)，
+               返回的是余弦「距离」，相似度 = 1 - 距离，再按 MIN_SCORE 过滤。
+    """
+    try:
+        import chromadb
+        from chromadb.config import Settings
+    except ImportError:
+        print(
+            "  \033[93m⚠ RAG_BACKEND=chroma，但没装 chromadb，本次回退 local 索引。\n"
+            "    安装：pip install chromadb\033[0m"
+        )
+        return _search_local(query, top_k=top_k)
+
+    # 向量空间 = 文档词表（排序保证下标稳定）；和 local 端用同一套 TF-IDF，
+    # 这样两个后端对同一个问题的 Top-K 结果可互相验证。
+    index = _load_index()
+    vocab = sorted(index["idf"])
+    term_to_i = {t: i for i, t in enumerate(vocab)}
+
+    def to_dense(sparse: dict[str, float]) -> list[float]:
+        vec = [0.0] * len(vocab)
+        for term, value in sparse.items():
+            i = term_to_i.get(term)
+            if i is not None:
+                vec[i] = value
+        return vec
+
+    client = chromadb.PersistentClient(
+        path=str(CHROMA_DIR),
+        settings=Settings(anonymized_telemetry=False),
+    )
+    collection = client.get_or_create_collection(
+        name=os.getenv("RAG_CHROMA_COLLECTION", "knowledge"),
+        metadata={"hnsw:space": "cosine"},  # 距离 = 1 - 余弦相似度
+    )
+
+    # 知识文件指纹变了（新增/修改 md）→ 整库重建，和 local 端的缓存失效逻辑一致
+    stored = (collection.metadata or {}).get("fingerprint")
+    if stored != index["fingerprint"]:
+        print("  \033[90m⚙ 正在把 knowledge/ 写入 Chroma 向量库…\033[0m")
+        client.delete_collection(collection.name)
+        collection = client.create_collection(
+            name=collection.name,
+            metadata={"hnsw:space": "cosine", "fingerprint": index["fingerprint"]},
+        )
+        collection.upsert(
+            ids=[c["id"] for c in index["chunks"]],
+            embeddings=[to_dense(c["vector"]) for c in index["chunks"]],
+            metadatas=[{"source": c["source"]} for c in index["chunks"]],
+        )
+
+    qvec = to_dense(_tfidf_vector(_tokenize(query), index["idf"]))
+    if not any(qvec):  # 问题里全是词表外的词，和 local 端同样判为不相关
+        return []
+    res = collection.query(query_embeddings=[qvec], n_results=top_k)
+
+    hits: list[dict] = []
+    for _id, dist, meta in zip(
+        res["ids"][0], res["distances"][0], res["metadatas"][0]
+    ):
+        score = 1.0 - dist  # cosine 距离 → 相似度，与 local 端的 score 同义
+        if score < MIN_SCORE:
+            continue
+        text = next(c["text"] for c in index["chunks"] if c["id"] == _id)
+        hits.append({"text": text, "source": meta["source"], "score": score})
+    return hits
 
 
 def load_chunks() -> list[dict]:

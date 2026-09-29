@@ -22,7 +22,7 @@
 | `legacy/agent_native.py` | ⭐ 手写 OpenAI SDK 的 Agent 核心循环（ReAct） | **先读它**：全项目灵魂 |
 | `legacy/tools_raw.py` | 手写版工具：函数 + JSON Schema 说明书 + 注册表 | 重点：工具 = 函数 + 描述 |
 | `tools.py` | LangChain `@tool` 版工具（graph/preset 模式共用） | 对照 legacy 版看框架省了什么 |
-| `rag.py` | RAG：读 `knowledge/*.md` → 切块 → TF-IDF 向量检索 | 看 `lookup_knowledge` 背后真正做了什么 |
+| `rag.py` | RAG：读 `knowledge/*.md` → 切块 → TF-IDF 向量检索（local / Chroma 双后端） | 看 `lookup_knowledge` 背后真正做了什么 |
 | `knowledge/` | RAG 知识库原文（Markdown） | 加一篇 `.md` 就能扩知识 |
 | `agent_graph.py` | LangGraph 手动 StateGraph（agent/tools 节点 + 条件边） | ⭐ **核心教学文件**：逐行对照手写循环 |
 | `agent_preset.py` | `create_react_agent` 预制版，约 60 行 | 感受"打包后的终态" |
@@ -112,7 +112,8 @@ Agent> 计算结果是 1152，现在是周日上午 10:30 ……
   每次请求把整个列表重发给模型（模型本身无状态，"记住"全靠重放历史）。
   LangGraph 里它就是 `AgentState.messages` + `add_messages` 合并器。
 - **RAG（检索增强生成）**：先从 `knowledge/` 查出相关段落，再让模型基于这些段落回答。
-  检索在 `rag.py`，生成仍走原来的 Agent 循环；对话记忆靠 `messages`，外部知识靠工具注入。
+  检索在 `rag.py`（默认自建 TF-IDF 索引，`RAG_BACKEND=chroma` 可切 Chroma 向量库），
+  生成仍走原来的 Agent 循环；对话记忆靠 `messages`，外部知识靠工具注入。
 - **安全阀**：手写版的 `MAX_TOOL_ROUNDS = 6` 与 LangGraph 的 `recursion_limit`
   本质相同 —— 防止模型无限调工具烧钱，生产级 Agent 必备。
 - **StateGraph（状态图）**：LangGraph 的核心抽象 —— 把 Agent 循环显式画成
@@ -142,6 +143,10 @@ Agent> 计算结果是 1152，现在是周日上午 10:30 ……
 7. ⭐⭐ **给知识库加一篇文档**：在 `knowledge/` 新建 `.md`，然后问 Agent 一个文中才有的问题，
    观察灰色过程行里 `lookup_knowledge` 是否命中你写的段落。（体会 RAG：改资料，不必改模型）
 
+8. ⭐⭐ **切换 RAG 后端**：在 `.env` 里设 `RAG_BACKEND=chroma`（需 `pip install chromadb`），
+   同样的问题再问一遍：命中结果一致，但向量存储/检索已交给 Chroma（`chroma_db/` 持久化目录）。
+   （体会“向量库只是基础设施，检索质量由向量化方式决定”）
+
 ## 五、下一步学什么
 
 理解了本项目的裸实现后，再去学框架会事半功倍：
@@ -150,8 +155,9 @@ Agent> 计算结果是 1152，现在是周日上午 10:30 ……
   子图、`interrupt` 人工审核、持久化 checkpointer（本项目已用内存版，换 SQLite 即可跨进程记忆）
 - **OpenAI Agents SDK**：另一条框架路线，对照着学更能体会设计取舍
 - **MCP（Model Context Protocol）**：标准化的工具接入协议，可把本项目的工具做成 MCP Server
-- **RAG 进阶**：本项目已用可读的 TF-IDF 向量检索做完最小 RAG（见 `rag.py`）。
-  下一步可换成 ChromaDB + 神经网络 embedding，或加 rerank / 滑动窗口切块
+- **RAG 进阶**：本项目已有两条路：可读的 TF-IDF 自建索引，以及接入 Chroma 向量库
+  （`RAG_BACKEND=chroma`，见 `rag.py` 的 `_search_chroma`）。
+  下一步可把向量化换成神经网络 embedding（接 Chroma 的方式不变），或加 rerank / 滑动窗口切块
 - **多 Agent 协作**：让若干个本项目的 Agent 各司其职互相调用
 
 ## 常见问题
@@ -162,5 +168,5 @@ Agent> 计算结果是 1152，现在是周日上午 10:30 ……
   确认终端里已 `source .venv/bin/activate`（提示符前应显示 `(.venv)`）。
 - **模型不调用工具直接瞎编答案**：正常现象，小模型偶尔会这样；
   可尝试更强模型，或把工具 `description` 写得更明确（这是最常见的调优手段）。
-- **第一次问概念题会打印「正在建立向量索引」**：`rag.py` 在扫描 `knowledge/` 并写入 `.rag_index.json`，之后会复用；改了 md 会自动重建。
+- **第一次问概念题会打印「正在建立向量索引」**：`rag.py` 在扫描 `knowledge/` 并写入 `.rag_index.json`，之后会复用；改了 md 会自动重建。若 `RAG_BACKEND=chroma`，首次会多打印一行「正在写入 Chroma 向量库」，向量落到 `chroma_db/`，同样按指纹增量重建。
 - **想单独测检索、不调大模型**：运行 `python3 rag.py`，会打印对示例问题的检索结果。
